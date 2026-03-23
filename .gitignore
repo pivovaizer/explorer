@@ -1,0 +1,31 @@
+pycache/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+Virtual environments
+.venv/
+
+Environment files
+.env
+.env.*
+!.env-example
+
+Editor/IDE
+.vscode/
+
+Test/cache/lint artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+Logs
+*.log
+
+OS junk
+.DS_Store
+Thumbs.db
