@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.database import get_db
 from src.api.models import Coin
+from src.utils.bech32m import decode_puzzle_hash
 from src.api.schemas.addresses import AddressResponse, CoinResponse, HistoryResponse
 
 
@@ -13,9 +14,12 @@ router = APIRouter(prefix="/addresses", tags=["addresses"])
 def _parse_puzzle_hash(puzzle_hash: str) -> bytes:
     """Accept hex puzzle_hash, return bytes."""
     try:
-        ph_bytes = bytes.fromhex(puzzle_hash)
+        if puzzle_hash.startswith("xch1"):
+            ph_bytes = decode_puzzle_hash(puzzle_hash)
+        else:
+            ph_bytes = bytes.fromhex(puzzle_hash)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid puzzle_hash hex")
+        raise HTTPException(status_code=400, detail="Invalid address or puzzle_hash")
     if len(ph_bytes) != 32:
         raise HTTPException(status_code=400, detail="puzzle_hash must be 32 bytes (64 hex chars)")
     return ph_bytes
@@ -32,25 +36,25 @@ def _coin_to_response(coin: Coin) -> CoinResponse:
     )
 
 
-@router.get("/{puzzle_hash}/balance", response_model=AddressResponse)
-async def get_address_balance(puzzle_hash: str, db: AsyncSession = Depends(get_db)):
-    ph_bytes = _parse_puzzle_hash(puzzle_hash)
+@router.get("/balance/{address}", response_model=AddressResponse)
+async def get_address_balance(address: str, db: AsyncSession = Depends(get_db)):
+    ph_bytes = _parse_puzzle_hash(address)
     result = await db.execute(
         select(func.coalesce(func.sum(Coin.amount), 0))
         .where(Coin.puzzle_hash == ph_bytes, Coin.spent_height.is_(None))
     )
     balance = result.scalar_one()
-    return AddressResponse(puzzle_hash=puzzle_hash, balance_mojo=balance)
+    return AddressResponse(puzzle_hash=address, balance_mojo=balance)
 
 
-@router.get("/{puzzle_hash}/utxos", response_model=list[CoinResponse])
+@router.get("/utxos/{address}", response_model=list[CoinResponse])
 async def get_address_utxos(
-    puzzle_hash: str,
+    address: str,
     limit: int = 20,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
 ):
-    ph_bytes = _parse_puzzle_hash(puzzle_hash)
+    ph_bytes = _parse_puzzle_hash(address)
     result = await db.execute(
         select(Coin)
         .where(Coin.puzzle_hash == ph_bytes, Coin.spent_height.is_(None))
@@ -62,14 +66,14 @@ async def get_address_utxos(
     return [_coin_to_response(c) for c in coins]
 
 
-@router.get("/{puzzle_hash}/history", response_model=HistoryResponse)
+@router.get("/history/{address}", response_model=HistoryResponse)
 async def get_address_history(
-    puzzle_hash: str,
+    address: str,
     limit: int = 20,
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
 ):
-    ph_bytes = _parse_puzzle_hash(puzzle_hash)
+    ph_bytes = _parse_puzzle_hash(address)
 
     count_result = await db.execute(
         select(func.count()).select_from(Coin).where(Coin.puzzle_hash == ph_bytes)
